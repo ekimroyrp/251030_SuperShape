@@ -139,6 +139,7 @@ const material = new MeshStandardMaterial({
   roughness: 0.35,
   metalness: 0.2,
   emissive: new Color(0x0d1b3a),
+  vertexColors: true,
   wireframe: controlState.wireframe,
 });
 

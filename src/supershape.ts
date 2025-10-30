@@ -62,6 +62,10 @@ export function createSuperShapeGeometry(params: SuperShapeParams): BufferGeomet
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
+  const radii: number[] = [];
+  const colors: number[] = [];
+  let minRadius = Infinity;
+  let maxRadius = -Infinity;
 
   for (let i = 0; i <= latSegments; i++) {
     const phi = i * phiStep - Math.PI / 2;
@@ -77,6 +81,15 @@ export function createSuperShapeGeometry(params: SuperShapeParams): BufferGeomet
 
       positions.push(x, y, z);
       uvs.push(j / lonSegments, i / latSegments);
+
+      const length = Math.sqrt(x * x + y * y + z * z);
+      radii.push(length);
+      if (length < minRadius) {
+        minRadius = length;
+      }
+      if (length > maxRadius) {
+        maxRadius = length;
+      }
     }
   }
 
@@ -92,10 +105,17 @@ export function createSuperShapeGeometry(params: SuperShapeParams): BufferGeomet
     }
   }
 
+  const radiusRange = Math.max(maxRadius - minRadius, 1e-6);
+  for (let i = 0; i < radii.length; i++) {
+    const t = (radii[i] - minRadius) / radiusRange;
+    colors.push(t, 0, 1 - t);
+  }
+
   const geometry = new BufferGeometry();
   geometry.setIndex(indices);
   geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
   geometry.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   geometry.computeBoundingBox();
@@ -122,15 +142,21 @@ export function updateSuperShapeGeometry(
 
   const positions = geometry.getAttribute("position");
   const uvs = geometry.getAttribute("uv");
+  const colors = geometry.getAttribute("color");
 
   if (
     positions.count !== (latSegments + 1) * (lonSegments + 1) ||
-    uvs.count !== (latSegments + 1) * (lonSegments + 1)
+    uvs.count !== (latSegments + 1) * (lonSegments + 1) ||
+    !colors ||
+    colors.count !== (latSegments + 1) * (lonSegments + 1)
   ) {
     const newGeometry = createSuperShapeGeometry(params);
     geometry.copy(newGeometry);
     geometry.attributes.position.needsUpdate = true;
     geometry.attributes.uv.needsUpdate = true;
+    if (geometry.attributes.color) {
+      geometry.attributes.color.needsUpdate = true;
+    }
     geometry.index!.needsUpdate = true;
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
@@ -141,6 +167,9 @@ export function updateSuperShapeGeometry(
   let index = 0;
   const thetaStep = (Math.PI * 2) / lonSegments;
   const phiStep = Math.PI / latSegments;
+
+  const positionArray = positions.array as Float32Array;
+  const colorArray = (geometry.getAttribute("color") as Float32BufferAttribute).array as Float32Array;
 
   for (let i = 0; i <= latSegments; i++) {
     const phi = i * phiStep - Math.PI / 2;
@@ -161,7 +190,36 @@ export function updateSuperShapeGeometry(
     }
   }
 
+  let minRadius = Infinity;
+  let maxRadius = -Infinity;
+
+  for (let i = 0; i < positions.count; i++) {
+    const x = positionArray[i * 3];
+    const y = positionArray[i * 3 + 1];
+    const z = positionArray[i * 3 + 2];
+    const length = Math.sqrt(x * x + y * y + z * z);
+    if (length < minRadius) {
+      minRadius = length;
+    }
+    if (length > maxRadius) {
+      maxRadius = length;
+    }
+  }
+
+  const radiusRange = Math.max(maxRadius - minRadius, 1e-6);
+  for (let i = 0; i < positions.count; i++) {
+    const x = positionArray[i * 3];
+    const y = positionArray[i * 3 + 1];
+    const z = positionArray[i * 3 + 2];
+    const length = Math.sqrt(x * x + y * y + z * z);
+    const t = (length - minRadius) / radiusRange;
+    colorArray[i * 3] = t;
+    colorArray[i * 3 + 1] = 0;
+    colorArray[i * 3 + 2] = 1 - t;
+  }
+
   positions.needsUpdate = true;
+  geometry.getAttribute("color").needsUpdate = true;
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 }
