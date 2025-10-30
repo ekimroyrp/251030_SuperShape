@@ -341,6 +341,7 @@ registerController(
     .onChange(() => scheduleUpdate())
     .onFinishChange(markCustom)
 );
+detailFolder.open();
 
 const presentationFolder = gui.addFolder("Presentation");
 registerController(
@@ -415,8 +416,6 @@ registerController(
     .name("Cycle Sec")
 );
 presentationFolder.open();
-
-gui.close();
 
 if (controlState.selectedPreset !== CUSTOM_PRESET_ID) {
   applyPreset(controlState.selectedPreset, false);
