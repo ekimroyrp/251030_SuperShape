@@ -87,8 +87,8 @@ export function createSuperShapeGeometry(params: SuperShapeParams): BufferGeomet
       const aIndex = i * vertsPerRow + j;
       const bIndex = aIndex + vertsPerRow;
 
-      indices.push(aIndex, bIndex, aIndex + 1);
-      indices.push(bIndex, bIndex + 1, aIndex + 1);
+      indices.push(aIndex, aIndex + 1, bIndex);
+      indices.push(aIndex + 1, bIndex + 1, bIndex);
     }
   }
 
