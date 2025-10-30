@@ -53,7 +53,8 @@ function superFormula(
 
 export function createSuperShapeGeometry(
   params: SuperShapeParams,
-  gradientStops: GradientStops = DEFAULT_GRADIENT
+  gradientStops: GradientStops = DEFAULT_GRADIENT,
+  deformation?: Float32Array
 ): BufferGeometry {
   const {
     m1,
@@ -79,6 +80,8 @@ export function createSuperShapeGeometry(
   let minRadius = Infinity;
   let maxRadius = -Infinity;
 
+  let vertexIndex = 0;
+
   for (let i = 0; i <= latSegments; i++) {
     const phi = i * phiStep - Math.PI / 2;
     const r2 = superFormula(phi, m2, n1, n2, n3, a, b);
@@ -87,9 +90,10 @@ export function createSuperShapeGeometry(
       const theta = j * thetaStep - Math.PI;
       const r1 = superFormula(theta, m1, n1, n2, n3, a, b);
 
-      const x = radius * r1 * Math.cos(theta) * r2 * Math.cos(phi);
-      const y = radius * r1 * Math.sin(theta) * r2 * Math.cos(phi);
-      const z = radius * r2 * Math.sin(phi);
+      const displacement = 1 + (deformation ? deformation[vertexIndex] ?? 0 : 0);
+      const x = displacement * radius * r1 * Math.cos(theta) * r2 * Math.cos(phi);
+      const y = displacement * radius * r1 * Math.sin(theta) * r2 * Math.cos(phi);
+      const z = displacement * radius * r2 * Math.sin(phi);
 
       positions.push(x, y, z);
       uvs.push(j / lonSegments, i / latSegments);
@@ -102,6 +106,8 @@ export function createSuperShapeGeometry(
       if (length > maxRadius) {
         maxRadius = length;
       }
+
+      vertexIndex++;
     }
   }
 
@@ -143,7 +149,8 @@ export function createSuperShapeGeometry(
 export function updateSuperShapeGeometry(
   geometry: BufferGeometry,
   params: SuperShapeParams,
-  gradientStops: GradientStops = DEFAULT_GRADIENT
+  gradientStops: GradientStops = DEFAULT_GRADIENT,
+  deformation?: Float32Array
 ): void {
   const {
     m1,
@@ -168,7 +175,7 @@ export function updateSuperShapeGeometry(
     !colors ||
     colors.count !== (latSegments + 1) * (lonSegments + 1)
   ) {
-    const newGeometry = createSuperShapeGeometry(params, gradientStops);
+    const newGeometry = createSuperShapeGeometry(params, gradientStops, deformation);
     geometry.copy(newGeometry);
     geometry.attributes.position.needsUpdate = true;
     geometry.attributes.uv.needsUpdate = true;
@@ -190,6 +197,8 @@ export function updateSuperShapeGeometry(
   const colorAttribute = geometry.getAttribute("color") as Float32BufferAttribute;
   const colorArray = colorAttribute.array as Float32Array;
 
+  let vertexIndex = 0;
+
   for (let i = 0; i <= latSegments; i++) {
     const phi = i * phiStep - Math.PI / 2;
     const r2 = superFormula(phi, m2, n1, n2, n3, a, b);
@@ -198,14 +207,16 @@ export function updateSuperShapeGeometry(
       const theta = j * thetaStep - Math.PI;
       const r1 = superFormula(theta, m1, n1, n2, n3, a, b);
 
+      const displacement = 1 + (deformation ? deformation[vertexIndex] ?? 0 : 0);
       tmpVector.set(
-        radius * r1 * Math.cos(theta) * r2 * Math.cos(phi),
-        radius * r1 * Math.sin(theta) * r2 * Math.cos(phi),
-        radius * r2 * Math.sin(phi)
+        displacement * radius * r1 * Math.cos(theta) * r2 * Math.cos(phi),
+        displacement * radius * r1 * Math.sin(theta) * r2 * Math.cos(phi),
+        displacement * radius * r2 * Math.sin(phi)
       );
 
       positions.setXYZ(index, tmpVector.x, tmpVector.y, tmpVector.z);
       index++;
+      vertexIndex++;
     }
   }
 

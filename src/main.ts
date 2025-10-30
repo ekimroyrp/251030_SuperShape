@@ -7,6 +7,8 @@ import {
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
+  Raycaster,
+  Vector2,
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
@@ -39,6 +41,16 @@ interface UIState extends SuperShapeControls {
   wireframe: boolean;
   gradientStart: string;
   gradientEnd: string;
+  sculptMode: boolean;
+  brushRadius: number;
+  brushStrength: number;
+  brushFalloff: number;
+}
+
+interface DeformationMap {
+  offsets: Float32Array;
+  latSegments: number;
+  lonSegments: number;
 }
 
 interface MorphState {
@@ -83,6 +95,15 @@ const defaultPreset =
   getPresetById(DEFAULT_PRESET_ID) ?? SUPER_SHAPE_PRESETS[0];
 const initialParams = { ...(defaultPreset?.params ?? FALLBACK_PARAMS) };
 
+const createDeformationMap = (
+  latSegments: number,
+  lonSegments: number
+): DeformationMap => ({
+  offsets: new Float32Array((latSegments + 1) * (lonSegments + 1)),
+  latSegments,
+  lonSegments,
+});
+
 const controlState: UIState = {
   ...initialParams,
   autoRotate: false,
@@ -95,6 +116,22 @@ const controlState: UIState = {
   wireframe: false,
   gradientStart: "#e1ff00",
   gradientEnd: "#4400ff",
+  sculptMode: false,
+  brushRadius: 0.08,
+  brushStrength: 0.25,
+  brushFalloff: 0.65,
+};
+
+let deformationMap = createDeformationMap(
+  controlState.latSegments,
+  controlState.lonSegments
+);
+
+const resetDeformationMap = (
+  latSegments = controlState.latSegments,
+  lonSegments = controlState.lonSegments
+) => {
+  deformationMap = createDeformationMap(latSegments, lonSegments);
 };
 
 const mount = document.getElementById("app");
@@ -110,6 +147,7 @@ renderer.shadowMap.enabled = false;
 renderer.domElement.style.display = "block";
 renderer.domElement.style.width = "100%";
 renderer.domElement.style.height = "100%";
+renderer.domElement.style.touchAction = "none";
 mount.appendChild(renderer.domElement);
 
 const scene = new Scene();
@@ -204,6 +242,8 @@ const getGradientStops = (): GradientStops => {
   };
 };
 
+const getDeformationOffsets = (): Float32Array => deformationMap.offsets;
+
 const setParamsInstant = (params: SuperShapeParams) => {
   PARAM_KEYS.forEach((key) => {
     (controlState as any)[key] = params[key];
@@ -261,9 +301,152 @@ const applyPreset = (presetId: string, animate = true) => {
   lastPresetSwitch = performance.now();
 };
 
-const geometry = createSuperShapeGeometry(getParams(), getGradientStops());
+const geometry = createSuperShapeGeometry(
+  getParams(),
+  getGradientStops(),
+  getDeformationOffsets()
+);
 const supershape = new Mesh(geometry, material);
 scene.add(supershape);
+
+const ensureDeformationMapMatchesSegments = () => {
+  const latSegments = Math.max(8, Math.floor(controlState.latSegments));
+  const lonSegments = Math.max(12, Math.floor(controlState.lonSegments));
+
+  if (
+    deformationMap.latSegments !== latSegments ||
+    deformationMap.lonSegments !== lonSegments
+  ) {
+    resetDeformationMap(latSegments, lonSegments);
+  }
+};
+
+const clampDeformation = (value: number): number =>
+  Math.min(0.95, Math.max(-0.95, value));
+
+const applyBrushAtUV = (uv: Vector2, direction: number) => {
+  ensureDeformationMapMatchesSegments();
+
+  const latSegments = deformationMap.latSegments;
+  const lonSegments = deformationMap.lonSegments;
+  const offsets = deformationMap.offsets;
+  const lonCount = lonSegments + 1;
+
+  const centerLat = uv.y * latSegments;
+  const centerLon = uv.x * lonSegments;
+
+  const radius = Math.max(0.001, controlState.brushRadius);
+  const latRadius = Math.max(1, Math.ceil(radius * latSegments));
+  const lonRadius = Math.max(1, Math.ceil(radius * lonSegments));
+  const falloffPower = Math.max(0.01, controlState.brushFalloff * 4);
+  const strength = controlState.brushStrength * direction;
+
+  const centerLatIndex = Math.round(centerLat);
+  const centerLonIndex = Math.round(centerLon);
+
+  for (let latOffset = -latRadius; latOffset <= latRadius; latOffset++) {
+    const latIndex = centerLatIndex + latOffset;
+    if (latIndex < 0 || latIndex > latSegments) {
+      continue;
+    }
+    const latNorm = latIndex / latSegments;
+    const dLat = Math.abs(latNorm - uv.y);
+
+    for (let lonOffset = -lonRadius; lonOffset <= lonRadius; lonOffset++) {
+      const lonIndex = centerLonIndex + lonOffset;
+      const wrappedLonIndex =
+        ((lonIndex % lonCount) + lonCount) % lonCount;
+      const lonNorm =
+        lonSegments === 0 ? 0 : wrappedLonIndex / lonSegments;
+      const rawLonDiff = Math.abs(lonNorm - uv.x);
+      const dLon = Math.min(rawLonDiff, 1 - rawLonDiff);
+
+      const distance = Math.sqrt(dLat * dLat + dLon * dLon);
+      if (distance > radius) {
+        continue;
+      }
+
+      const normalized = distance / radius;
+      const falloff = Math.pow(1 - normalized, falloffPower);
+      if (falloff <= 0) {
+        continue;
+      }
+
+      const idx = latIndex * lonCount + wrappedLonIndex;
+      offsets[idx] = clampDeformation(offsets[idx] + strength * falloff);
+    }
+  }
+
+  markCustom();
+  scheduleUpdate();
+};
+
+const updatePointerFromEvent = (event: PointerEvent) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+};
+
+const getBrushDirection = (event: PointerEvent): number => {
+  if (event.altKey || event.button === 2 || (event.buttons & 2) === 2) {
+    return -1;
+  }
+  return 1;
+};
+
+const paintFromEvent = (event: PointerEvent) => {
+  if (!controlState.sculptMode) {
+    return;
+  }
+
+  updatePointerFromEvent(event);
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObject(supershape, false)[0];
+  if (!hit || !hit.uv) {
+    return;
+  }
+
+  applyBrushAtUV(hit.uv, getBrushDirection(event));
+};
+
+const handlePointerDown = (event: PointerEvent) => {
+  if (!controlState.sculptMode) {
+    return;
+  }
+  if (event.button !== 0 && event.button !== 2) {
+    return;
+  }
+  isPointerDown = true;
+  controls.enabled = false;
+  paintFromEvent(event);
+  event.preventDefault();
+};
+
+const handlePointerMove = (event: PointerEvent) => {
+  if (!controlState.sculptMode || !isPointerDown) {
+    return;
+  }
+  paintFromEvent(event);
+  event.preventDefault();
+};
+
+const handlePointerUp = () => {
+  if (!isPointerDown) {
+    return;
+  }
+  isPointerDown = false;
+  controls.enabled = true;
+};
+
+renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+renderer.domElement.addEventListener("pointermove", handlePointerMove);
+window.addEventListener("pointerup", handlePointerUp);
+renderer.domElement.addEventListener("contextmenu", (event) => {
+  if (controlState.sculptMode) {
+    event.preventDefault();
+  }
+});
+
 
 const stats = new Stats();
 stats.dom.style.position = "absolute";
@@ -272,6 +455,10 @@ stats.dom.style.bottom = "1rem";
 stats.dom.style.zIndex = "10";
 stats.dom.style.display = controlState.showStats ? "block" : "none";
 mount.appendChild(stats.dom);
+
+const raycaster = new Raycaster();
+const pointer = new Vector2();
+let isPointerDown = false;
 
 const gui = new GUI({ width: 320 });
 
@@ -337,7 +524,13 @@ registerController(
     .onChange(() => {
       scheduleUpdate();
     })
-    .onFinishChange(markCustom)
+    .onFinishChange(() => {
+      const latSegments = Math.max(8, Math.floor(controlState.latSegments));
+      const lonSegments = Math.max(12, Math.floor(controlState.lonSegments));
+      resetDeformationMap(latSegments, lonSegments);
+      markCustom();
+      scheduleUpdate(true);
+    })
 );
 registerController(
   "lonSegments",
@@ -347,7 +540,13 @@ registerController(
     .onChange(() => {
       scheduleUpdate();
     })
-    .onFinishChange(markCustom)
+    .onFinishChange(() => {
+      const latSegments = Math.max(8, Math.floor(controlState.latSegments));
+      const lonSegments = Math.max(12, Math.floor(controlState.lonSegments));
+      resetDeformationMap(latSegments, lonSegments);
+      markCustom();
+      scheduleUpdate(true);
+    })
 );
 registerController(
   "radius",
@@ -382,6 +581,52 @@ registerController(
       scheduleUpdate();
     })
 );
+
+const sculptFolder = presentationFolder.addFolder("Sculpting");
+sculptFolder.open();
+registerController(
+  "sculptMode",
+  sculptFolder
+    .add(controlState, "sculptMode")
+    .name("Enable Sculpt")
+    .onChange((active: boolean) => {
+      if (!active) {
+        isPointerDown = false;
+        controls.enabled = true;
+      }
+    })
+);
+registerController(
+  "brushStrength",
+  sculptFolder
+    .add(controlState, "brushStrength", 0.01, 1, 0.01)
+    .name("Brush Strength")
+);
+registerController(
+  "brushRadius",
+  sculptFolder
+    .add(controlState, "brushRadius", 0.01, 0.3, 0.005)
+    .name("Brush Radius")
+);
+registerController(
+  "brushFalloff",
+  sculptFolder
+    .add(controlState, "brushFalloff", 0, 1, 0.01)
+    .name("Brush Falloff")
+);
+sculptFolder
+  .add(
+    {
+      reset: () => {
+        resetDeformationMap();
+        scheduleUpdate(true);
+        markCustom();
+      },
+    },
+    "reset"
+  )
+  .name("Reset Sculpt");
+
 registerController(
   "autoRotate",
   presentationFolder.add(controlState, "autoRotate").name("Auto Rotate")
@@ -505,12 +750,21 @@ const animate = () => {
     const nextParams = getParams();
     const gradientStops = getGradientStops();
     if (needsRebuild) {
-      const newGeometry = createSuperShapeGeometry(nextParams, gradientStops);
+      const newGeometry = createSuperShapeGeometry(
+        nextParams,
+        gradientStops,
+        getDeformationOffsets()
+      );
       supershape.geometry.dispose();
       supershape.geometry = newGeometry;
       needsRebuild = false;
     } else {
-      updateSuperShapeGeometry(supershape.geometry, nextParams, gradientStops);
+      updateSuperShapeGeometry(
+        supershape.geometry,
+        nextParams,
+        gradientStops,
+        getDeformationOffsets()
+      );
     }
     needsUpdate = false;
   }
