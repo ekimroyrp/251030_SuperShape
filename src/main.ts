@@ -12,10 +12,12 @@ import {
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import GUI from "lil-gui";
 import Stats from "stats.js";
+import chroma from "chroma-js";
 import {
   SuperShapeParams,
   createSuperShapeGeometry,
   updateSuperShapeGeometry,
+  GradientStops,
 } from "./supershape";
 import {
   DEFAULT_PRESET_ID,
@@ -35,6 +37,8 @@ interface UIState extends SuperShapeControls {
   cycleDuration: number;
   morphDuration: number;
   wireframe: boolean;
+  gradientStart: string;
+  gradientEnd: string;
 }
 
 interface MorphState {
@@ -89,6 +93,8 @@ const controlState: UIState = {
   cycleDuration: 6,
   morphDuration: 1.5,
   wireframe: false,
+  gradientStart: "#e1ff00",
+  gradientEnd: "#4400ff",
 };
 
 const mount = document.getElementById("app");
@@ -135,7 +141,7 @@ rimLight.position.set(-4, 2, -3);
 scene.add(rimLight);
 
 const material = new MeshStandardMaterial({
-  color: 0x80b7ff,
+  color: 0xffffff,
   roughness: 0.35,
   metalness: 0.2,
   emissive: new Color(0x0d1b3a),
@@ -188,6 +194,15 @@ const getParams = (): SuperShapeParams => ({
   latSegments: Math.max(8, Math.floor(controlState.latSegments)),
   lonSegments: Math.max(12, Math.floor(controlState.lonSegments)),
 });
+
+const getGradientStops = (): GradientStops => {
+  const start = chroma(controlState.gradientStart).gl();
+  const end = chroma(controlState.gradientEnd).gl();
+  return {
+    start: [start[0], start[1], start[2]],
+    end: [end[0], end[1], end[2]],
+  };
+};
 
 const setParamsInstant = (params: SuperShapeParams) => {
   PARAM_KEYS.forEach((key) => {
@@ -246,7 +261,7 @@ const applyPreset = (presetId: string, animate = true) => {
   lastPresetSwitch = performance.now();
 };
 
-const geometry = createSuperShapeGeometry(getParams());
+const geometry = createSuperShapeGeometry(getParams(), getGradientStops());
 const supershape = new Mesh(geometry, material);
 scene.add(supershape);
 
@@ -345,6 +360,28 @@ registerController(
 detailFolder.open();
 
 const presentationFolder = gui.addFolder("Presentation");
+const gradientFolder = presentationFolder.addFolder("Gradient");
+gradientFolder.open();
+registerController(
+  "gradientStart",
+  gradientFolder
+    .addColor(controlState, "gradientStart")
+    .name("Low Color")
+    .onChange(() => {
+      markCustom();
+      scheduleUpdate();
+    })
+);
+registerController(
+  "gradientEnd",
+  gradientFolder
+    .addColor(controlState, "gradientEnd")
+    .name("High Color")
+    .onChange(() => {
+      markCustom();
+      scheduleUpdate();
+    })
+);
 registerController(
   "autoRotate",
   presentationFolder.add(controlState, "autoRotate").name("Auto Rotate")
@@ -466,13 +503,14 @@ const animate = () => {
 
   if (needsUpdate) {
     const nextParams = getParams();
+    const gradientStops = getGradientStops();
     if (needsRebuild) {
-      const newGeometry = createSuperShapeGeometry(nextParams);
+      const newGeometry = createSuperShapeGeometry(nextParams, gradientStops);
       supershape.geometry.dispose();
       supershape.geometry = newGeometry;
       needsRebuild = false;
     } else {
-      updateSuperShapeGeometry(supershape.geometry, nextParams);
+      updateSuperShapeGeometry(supershape.geometry, nextParams, gradientStops);
     }
     needsUpdate = false;
   }

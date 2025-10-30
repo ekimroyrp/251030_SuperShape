@@ -17,7 +17,16 @@ export interface SuperShapeParams {
   lonSegments: number;
 }
 
+export interface GradientStops {
+  start: [number, number, number];
+  end: [number, number, number];
+}
+
 const tmpVector = new Vector3();
+const DEFAULT_GRADIENT: GradientStops = {
+  start: [0, 0, 1],
+  end: [1, 0, 0],
+};
 
 function superFormula(
   angle: number,
@@ -42,7 +51,10 @@ function superFormula(
   return 1 / denominator;
 }
 
-export function createSuperShapeGeometry(params: SuperShapeParams): BufferGeometry {
+export function createSuperShapeGeometry(
+  params: SuperShapeParams,
+  gradientStops: GradientStops = DEFAULT_GRADIENT
+): BufferGeometry {
   const {
     m1,
     m2,
@@ -106,9 +118,14 @@ export function createSuperShapeGeometry(params: SuperShapeParams): BufferGeomet
   }
 
   const radiusRange = Math.max(maxRadius - minRadius, 1e-6);
+  const { start, end } = gradientStops;
   for (let i = 0; i < radii.length; i++) {
     const t = (radii[i] - minRadius) / radiusRange;
-    colors.push(t, 0, 1 - t);
+    colors.push(
+      start[0] + (end[0] - start[0]) * t,
+      start[1] + (end[1] - start[1]) * t,
+      start[2] + (end[2] - start[2]) * t
+    );
   }
 
   const geometry = new BufferGeometry();
@@ -125,7 +142,8 @@ export function createSuperShapeGeometry(params: SuperShapeParams): BufferGeomet
 
 export function updateSuperShapeGeometry(
   geometry: BufferGeometry,
-  params: SuperShapeParams
+  params: SuperShapeParams,
+  gradientStops: GradientStops = DEFAULT_GRADIENT
 ): void {
   const {
     m1,
@@ -150,7 +168,7 @@ export function updateSuperShapeGeometry(
     !colors ||
     colors.count !== (latSegments + 1) * (lonSegments + 1)
   ) {
-    const newGeometry = createSuperShapeGeometry(params);
+    const newGeometry = createSuperShapeGeometry(params, gradientStops);
     geometry.copy(newGeometry);
     geometry.attributes.position.needsUpdate = true;
     geometry.attributes.uv.needsUpdate = true;
@@ -169,7 +187,8 @@ export function updateSuperShapeGeometry(
   const phiStep = Math.PI / latSegments;
 
   const positionArray = positions.array as Float32Array;
-  const colorArray = (geometry.getAttribute("color") as Float32BufferAttribute).array as Float32Array;
+  const colorAttribute = geometry.getAttribute("color") as Float32BufferAttribute;
+  const colorArray = colorAttribute.array as Float32Array;
 
   for (let i = 0; i <= latSegments; i++) {
     const phi = i * phiStep - Math.PI / 2;
@@ -207,19 +226,20 @@ export function updateSuperShapeGeometry(
   }
 
   const radiusRange = Math.max(maxRadius - minRadius, 1e-6);
+  const { start, end } = gradientStops;
   for (let i = 0; i < positions.count; i++) {
     const x = positionArray[i * 3];
     const y = positionArray[i * 3 + 1];
     const z = positionArray[i * 3 + 2];
     const length = Math.sqrt(x * x + y * y + z * z);
     const t = (length - minRadius) / radiusRange;
-    colorArray[i * 3] = t;
-    colorArray[i * 3 + 1] = 0;
-    colorArray[i * 3 + 2] = 1 - t;
+    colorArray[i * 3] = start[0] + (end[0] - start[0]) * t;
+    colorArray[i * 3 + 1] = start[1] + (end[1] - start[1]) * t;
+    colorArray[i * 3 + 2] = start[2] + (end[2] - start[2]) * t;
   }
 
   positions.needsUpdate = true;
-  geometry.getAttribute("color").needsUpdate = true;
+  colorAttribute.needsUpdate = true;
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 }

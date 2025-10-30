@@ -4,7 +4,7 @@ SuperShape Explorer is an interactive Three.js experience for studying Johan Gie
 
 ## Features
 - Real-time supershape mesh generated from Gielis’ superformula with adjustable latitude/longitude resolution
-- Dynamic blue-to-red vertex color gradient that highlights valleys and peaks of each morphology
+- Customizable vertex color gradient that highlights valleys and peaks of each morphology
 - Preset browser with smooth morph animations, auto-cycling playlist, and manual overrides
 - Intuitive slider controls (powered by lil-gui) covering all key parameters, rotation, wireframe, and diagnostics
 - Responsive Three.js scene with OrbitControls, cinematic lighting, and optional performance stats

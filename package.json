@@ -12,11 +12,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "chroma-js": "^2.4.2",
     "lil-gui": "^0.21.0",
     "stats.js": "^0.17.0",
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@types/chroma-js": "^3.1.2",
     "@types/node": "^24.9.2",
     "@types/stats.js": "^0.17.4",
     "@types/three": "^0.180.0",
