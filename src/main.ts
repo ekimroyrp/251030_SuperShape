@@ -81,7 +81,7 @@ const initialParams = { ...(defaultPreset?.params ?? FALLBACK_PARAMS) };
 
 const controlState: UIState = {
   ...initialParams,
-  autoRotate: true,
+  autoRotate: false,
   rotationSpeed: 0.25,
   showStats: false,
   selectedPreset: defaultPreset?.id ?? CUSTOM_PRESET_ID,
