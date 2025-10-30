@@ -2,4 +2,4 @@ Don't push to github unless I tell you to.
 Don't pull from github unless I tell you to.
 Always push and pull with git from my account ekimroyrp with the email ekimroyrp@gmail.com.
 Give each git commited file or folder a unique description based on what the commit was about.
-Update README.md before each commit to give a paragraph summary of the project as a whole as well as a features list, don't include or update the README.md with minor changes, only include major features.
+Create an initial README.md at the first push commit, then update the README.md before each commit to give a paragraph summary of the project as a whole as well as a features list, don't include or update the README.md with minor changes, only include major features.
