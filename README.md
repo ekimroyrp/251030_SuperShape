@@ -31,3 +31,12 @@ pm run preview
 - **Sculpting:** Toggle sculpt mode to brush deformations onto the surface, adjusting strength, radius, falloff, or resetting to the base mesh.
 - **Presentation:** Switch auto-rotation, tune rotation speed, toggle stats and wireframe overlays, and smooth colours with gradient controls.
 - **Viewport:** Use OrbitControls (drag to orbit, right-drag to pan, scroll to zoom) to inspect the mesh from any angle.
+
+## Deployment
+- **Local production preview:** Run 
+pm install, then 
+pm run build followed by 
+pm run preview to serve the compiled bundle.
+- **Publish to GitHub Pages:** From main, run 
+pm run build -- --base=./, copy the contents of dist/ into the gh-pages branch (or reuse the worktree workflow), commit, and git push origin gh-pages. Switch back to main afterwards.
+- **Live demo:** https://ekimroyrp.github.io/251030_SuperShape/
