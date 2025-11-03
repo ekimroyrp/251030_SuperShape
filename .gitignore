@@ -2,3 +2,9 @@
 Thumbs.db
 npm-debug.log*
 yarn-error.log*
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
